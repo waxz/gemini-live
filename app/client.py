@@ -15,11 +15,12 @@ def on_log(client, userdata, level, buf):
 # --- CONFIGURATION ---
 BROKER_HOST = "localhost"
 BROKER_PORT = 8000
-MQTT_WS_PATH = "/mqtt"
+MQTT_WS_PATH = "/mqtt_opt"
+BROKER_LTS = False
 
-BROKER_HOST ="jungle-beneath-noticed-matching.trycloudflare.com"
-BROKER_PORT = 443
-BROKER_LTS = True
+# BROKER_HOST ="jungle-beneath-noticed-matching.trycloudflare.com"
+# BROKER_PORT = 443
+# BROKER_LTS = True
 
 
 MESSAGE_LOG_COUNT = 10000

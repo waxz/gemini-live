@@ -1,4 +1,16 @@
 import asyncio
+from datetime import datetime
+
+# 1. IMPORT THE COMPILED CYTHON MODULE
+try:
+    from proxy_core import optimized_ws_to_tcp, optimized_tcp_to_ws
+    print("🚀 Running with CYTHON optimizations")
+except ImportError:
+    print("⚠️ Cython module not found. Run 'python setup.py build_ext --inplace'")
+    # Fallback to Python definitions if compilation failed
+    async def optimized_ws_to_tcp(ws, writer): pass 
+    async def optimized_tcp_to_ws(reader, ws): pass
+
 
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -37,11 +49,22 @@ BROKER_HOST = '127.0.0.1'
 CHUNK_SIZE = 65536  # 64KB Read Buffer
 BUFFER_SIZE = 65536
 MESSAGE_LOG_COUNT = 10000
-
+MESSAGE_COUNT=0
+MESSAGE_START_TIME = None
 def on_message(msg):
     # Only print every 100th message to save CPU
-    if int(msg.split()[-1]) % MESSAGE_LOG_COUNT == 0:
+    COUNT = int(msg.split()[-1])
+    global MESSAGE_COUNT, MESSAGE_START_TIME
+    if MESSAGE_START_TIME is None:
+        MESSAGE_START_TIME = datetime.now()
+    MESSAGE_COUNT += 1
+
+    if MESSAGE_COUNT % MESSAGE_LOG_COUNT == 0:
         print(f"📩 Recieve [{msg}]")
+        elapsed = (datetime.now() - MESSAGE_START_TIME).total_seconds()
+        
+        mps = float(MESSAGE_COUNT) / float(elapsed) 
+        print(f"📊 Processed {MESSAGE_COUNT} messages in {elapsed:.2f} sec,  {mps:.2f} m/sec") 
         
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -107,6 +130,32 @@ async def tcp_to_ws(reader: asyncio.StreamReader, ws: WebSocket):
         pass # WS closed
     except Exception as e:
         print(f"⚠️ TCP->WS Error: {e}")
+
+
+@app.websocket("/mqtt_opt")
+async def mqtt_websocket_proxy_opt(client_ws: WebSocket):
+    try:
+        reader, writer = await asyncio.open_connection(BROKER_HOST, BROKER_PORT)
+    except Exception:
+        await client_ws.close(code=1011)
+        return
+
+    await client_ws.accept(subprotocol="mqtt")
+
+    # 2. USE THE CYTHON FUNCTIONS
+    task_ws = asyncio.create_task(optimized_ws_to_tcp(client_ws, writer))
+    task_tcp = asyncio.create_task(optimized_tcp_to_ws(reader, client_ws))
+
+    await asyncio.wait([task_ws, task_tcp], return_when=asyncio.FIRST_COMPLETED)
+
+    for task in [task_ws, task_tcp]:
+        task.cancel()
+    
+    writer.close()
+    try:
+        await writer.wait_closed()
+    except:
+        pass
 
 @app.websocket("/mqtt")
 async def mqtt_websocket_proxy(client_ws: WebSocket):

@@ -13,3 +13,6 @@ python-jose[cryptography]
 # passlib
 sqlalchemy
 opencv-python
+
+cython
+setuptools

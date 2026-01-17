@@ -22,6 +22,11 @@ uvicorn app.broker:app --host 127.0.0.1 --port 8000 --loop uvloop --ws-ping-inte
 python3 ./app/run_broker.py
 ```
 
+# cpython
+```bash
+python3 ./app/pyx/setup.py build_ext -b ./app/
+```
+
 
 # tcpdump
 ```bash
