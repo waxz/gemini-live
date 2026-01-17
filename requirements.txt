@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+uvloop
+websockets
+iotcore
+gmqtt
+google-genai
+python-dotenv
+jinja2
+PersistDict
+python-multipart
+python-jose[cryptography]
+# passlib
+sqlalchemy
+opencv-python
