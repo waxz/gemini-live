@@ -67,7 +67,9 @@ def main():
 
 
     client.connect(BROKER_HOST, BROKER_PORT, keepalive=60)
+    client.reconnect_delay_set(min_delay=1, max_delay=5)
     client.loop_start()
+    # client.loop_forever(retry_first_connection=True)
 
     counter = 0
     try:
