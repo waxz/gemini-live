@@ -1,10 +1,14 @@
+import sys
 import uuid
+import re
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import CallbackAPIVersion
 from time import sleep
 import logging
 import datetime
+import argparse
 
+from pathlib import Path
 # 1. Enable Python Logging
 # logging.basicConfig(level=logging.DEBUG) 
 
@@ -13,18 +17,38 @@ def on_log(client, userdata, level, buf):
 
 
 # --- CONFIGURATION ---
-BROKER_HOST = "localhost"
-BROKER_PORT = 8000
-MQTT_WS_PATH = "/mqtt_opt"
-BROKER_LTS = False
 
-# BROKER_HOST ="jungle-beneath-noticed-matching.trycloudflare.com"
-# BROKER_PORT = 443
-# BROKER_LTS = True
+argparser = argparse.ArgumentParser(description="MQTT WebSocket Client")
+argparser.add_argument("--broker", type=str, default="localhost", help="MQTT Broker Host")
+argparser.add_argument("--port", type=int, default=8000, help="MQTT Broker Port")
+argparser.add_argument("--lts", action="store_true", help="Use LTS (TLS) Connection")
+argparser.add_argument("--rate", type=float, default=0.00001, help="Publish Rate (seconds)")
+argparser.add_argument("--path", type=str, default="/mqtt_opt", help="WebSocket Path")
 
+# load from cf.log
+argparser.add_argument("--cf", action="store_true", help="Use Cloudflare Public Broker")
+args = argparser.parse_args()
+print(f"🚀 Starting MQTT WebSocket Client with args: {args}")
+
+MQTT_WS_PATH = args.path
+
+BROKER_HOST = args.broker
+BROKER_PORT = args.port
+BROKER_LTS = args.lts
+if args.cf:
+    cf_log_file = Path(__file__).parent.parent /"cf.log"
+    if cf_log_file.exists():
+        print("🌐 Detected Cloudflare Environment - Using Public Broker")
+        with open(cf_log_file, "r") as f:
+            pattern = r"[a-z\-]+\.trycloudflare.com"
+            all_matches = re.findall(pattern, f.read())
+            BROKER_HOST = all_matches[-1]
+            print(f"🌍 Cloudflare Hostname: {BROKER_HOST}")
+        BROKER_PORT = 443
+        BROKER_LTS = True
 
 MESSAGE_LOG_COUNT = 10000
-PUBLISH_RATE=0.00001
+PUBLISH_RATE=args.rate  # seconds
 
 # Optional: Enable Paho Logging to see handshake errors
 # logging.basicConfig(level=logging.DEBUG)

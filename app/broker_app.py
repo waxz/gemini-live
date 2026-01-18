@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import socket
 
 # 1. IMPORT THE COMPILED CYTHON MODULE
 try:
@@ -90,8 +91,9 @@ app = FastAPI(lifespan=lifespan)
 
 async def ws_to_tcp(ws: WebSocket, writer: asyncio.StreamWriter):
     pending_bytes = 0
-    # Increase buffer to 128KB to handle the flood better
-    FLUSH_THRESHOLD = 131072 
+    # Increase from 128KB to 512KB for Localhost testing
+    # Try Increasing the Flush Threshold for localhost. Since localhost is extremely fast, flushing too often (CPU bound) is worse than flushing less often (Memory bound).
+    FLUSH_THRESHOLD = 524288  # 512KB
 
     try:
         async for data in ws.iter_bytes():
@@ -134,13 +136,39 @@ async def tcp_to_ws(reader: asyncio.StreamReader, ws: WebSocket):
 
 @app.websocket("/mqtt_opt")
 async def mqtt_websocket_proxy_opt(client_ws: WebSocket):
+    
+    # --- FIX FOR BROWSER COMPATIBILITY ---
+    # 1. Connect to Internal Broker
     try:
         reader, writer = await asyncio.open_connection(BROKER_HOST, BROKER_PORT)
-    except Exception:
+        # --- OPTIMIZATION ---
+        # Get the raw socket object
+        sock = writer.get_extra_info('socket')
+        if sock:
+            # Disable Nagle's Algorithm (No Delay)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            
+    except Exception as e:
+        print(f"❌ Internal Broker Down: {e}")
         await client_ws.close(code=1011)
         return
 
-    await client_ws.accept(subprotocol="mqtt")
+    # 2. Negotiate Subprotocol Smartly
+    # Browsers might send: "mqtt", "mqttv3.1", or a list.
+    requested_protocols = client_ws.scope.get('subprotocols', [])
+    print(f"🔄 Client requested subprotocols: {requested_protocols}")
+    
+    # If client asks for 'mqtt', give it 'mqtt'.
+    if "mqtt" in requested_protocols:
+        await client_ws.accept(subprotocol="mqtt")
+    # If client asks for nothing (some default browser behaviors), accept anyway.
+    elif not requested_protocols:
+        await client_ws.accept()
+    else:
+        # Fallback: Just accept the first one they asked for to keep connection alive
+        await client_ws.accept(subprotocol=requested_protocols[0])
+
+
 
     # 2. USE THE CYTHON FUNCTIONS
     task_ws = asyncio.create_task(optimized_ws_to_tcp(client_ws, writer))
@@ -159,15 +187,49 @@ async def mqtt_websocket_proxy_opt(client_ws: WebSocket):
 
 @app.websocket("/mqtt")
 async def mqtt_websocket_proxy(client_ws: WebSocket):
+    
+    # --- FIX FOR BROWSER COMPATIBILITY ---
     # 1. Connect to Internal Broker
+
+    # get reader, writer from connection pool
+
     try:
         reader, writer = await asyncio.open_connection(BROKER_HOST, BROKER_PORT)
-    except Exception:
+        # --- OPTIMIZATION ---
+        # Get the raw socket object
+        sock = writer.get_extra_info('socket')
+        if sock:
+            # Disable Nagle's Algorithm (No Delay)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except Exception as e:
+        print(f"❌ Internal Broker Down: {e}")
         await client_ws.close(code=1011)
         return
 
-    # 2. Handshake
-    await client_ws.accept(subprotocol="mqtt")
+    print("✅ Connected to Internal Broker")
+    
+
+    # get id of the client
+    client_id = client_ws.headers.get("sec-websocket-key","unknown")
+    print(f"🔑 Client ID: {client_id}")
+
+
+    # 2. Negotiate Subprotocol Smartly
+    # Browsers might send: "mqtt", "mqttv3.1", or a list.
+    requested_protocols = client_ws.scope.get('subprotocols', [])
+    print(f"🔄 Client requested subprotocols: {requested_protocols}")
+    
+    # If client asks for 'mqtt', give it 'mqtt'.
+    if "mqtt" in requested_protocols:
+        await client_ws.accept(subprotocol="mqtt")
+    # If client asks for nothing (some default browser behaviors), accept anyway.
+    elif not requested_protocols:
+        await client_ws.accept()
+    else:
+        # Fallback: Just accept the first one they asked for to keep connection alive
+        await client_ws.accept(subprotocol=requested_protocols[0])
+
+
 
     # 3. Create Tasks
     task_ws_to_tcp = asyncio.create_task(ws_to_tcp(client_ws, writer))

@@ -9,6 +9,9 @@ async def optimized_ws_to_tcp(object ws, object writer):
     cdef int pending_bytes = 0
     cdef int n = 0
     cdef int FLUSH_THRESHOLD = 131072 # 128KB
+    # Increase from 128KB to 512KB for Localhost testing
+    # Try Increasing the Flush Threshold for localhost. Since localhost is extremely fast, flushing too often (CPU bound) is worse than flushing less often (Memory bound).
+    FLUSH_THRESHOLD = 524288  # 512KB
     cdef bytes data
 
     try:
